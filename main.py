@@ -89,6 +89,11 @@ if __name__ == '__main__':
         print("Failed to open /keybase -- do you have KBFS installed?")
         exit(-1)
 
+    try:
+        os.listdir(SOCK_DIR)
+    except:
+        os.makedirs(SOCK_DIR)
+
     SERVER = Server()
 
     observer = Observer()
