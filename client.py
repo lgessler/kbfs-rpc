@@ -16,6 +16,7 @@ class Client(object):
         self.tok = uuid.uuid4().hex  # nonce identifier
         self.subsfilename = os.path.join(SUBS_DIR, self.tok + '.subs')
 
+        self._subs = list()
         if subs:
             for names, channel in subs:
                 self.sub(names, channel)
@@ -25,6 +26,7 @@ class Client(object):
 
     def sub(self, names, channel):
         print("Writing to", SUBS_DIR + '/' + self.tok + '.subs')
+        self._subs.append((names, channel))
         with open(self.subsfilename, 'a') as f:
             f.write("{}{}{}\n".format(names, INLINE_SEP, channel))
 
@@ -37,9 +39,14 @@ class Client(object):
                 n, c = line.strip().split(INLINE_SEP)
                 if not (n == names and c == channel):
                     f.write(line)
+        
+        self._subs = [x for x in self._subs if \
+               not (x[0] == names and x[1] == channel)]
 
     def send_message(m, names, channel):
-        pass
+        if (names, channel) not in self._subs:
+            raise Exception("Can't send message on a channel you're not"
+                    "subscribed to")
 
     def on_message(m):
         pass
