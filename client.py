@@ -21,7 +21,7 @@ class Client(object):
                 self.sub(names, channel)
 
     def __del__(self):
-        os.remove( 
+        os.remove(self.subsfilename)
 
     def sub(self, names, channel):
         print("Writing to", SUBS_DIR + '/' + self.tok + '.subs')
@@ -32,7 +32,7 @@ class Client(object):
         with open(self.subsfilename, 'r') as f:
             lines = f.readlines()
 
-        with open(SUBS_DIR + '/' + self.tok + '.subs', 'w') as f:
+        with open(self.subsfilename, 'w') as f:
             for line in lines:
                 n, c = line.strip().split(INLINE_SEP)
                 if not (n == names and c == channel):
