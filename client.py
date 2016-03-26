@@ -43,10 +43,10 @@ class Client(object):
         self._subs = [x for x in self._subs if \
                not (x[0] == names and x[1] == channel)]
 
-    def send_message(m, names, channel):
+    def send_message(self, m, names, channel):
         if (names, channel) not in self._subs:
             raise Exception("Can't send message on a channel you're not"
                     "subscribed to")
 
-    def on_message(m):
+    def on_message(self, m):
         pass
