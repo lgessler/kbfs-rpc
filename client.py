@@ -1,5 +1,5 @@
 import uuid
-import json
+import os
 from config import FIFO_DIR, SUBS_DIR, INLINE_SEP
 
 class Client(object):
@@ -37,3 +37,9 @@ class Client(object):
                 n, c = line.strip().split(INLINE_SEP)
                 if not (n == names and c == channel):
                     f.write(line)
+
+    def send_message(m, names, channel):
+        pass
+
+    def on_message(m):
+        pass

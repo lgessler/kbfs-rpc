@@ -7,7 +7,7 @@ import threading as thrd
 from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
 
-from config import FIFO_DIR, SUBS_DIR
+from config import FIFO_DIR, SUBS_DIR, INLINE_SEP
 
 SERVER = None
 
@@ -35,10 +35,19 @@ class FifoWatcher(PatternMatchingEventHandler):
 class SubsWatcher(PatternMatchingEventHandler):
     patterns = ["*.subs"]
 
+    def on_created(self, event):
+        SERVER.update_subs(event.src_path)
 
+    def on_modified(self, event):
+        SERVER.update_subs(event.src_path)
+
+    def on_deleted(self, event):
+        SERVER.update_subs(event.src_path, deleted=True)
 
 class Server(object):
     def __init__(self):
+        global SERVER
+
         try:
             os.listdir(FIFO_DIR)
         except:
@@ -57,10 +66,14 @@ class Server(object):
                 f.endswith('.fifo')]:
             self.read_client_send_to_kbfs(fifopath)
 
+        self._subs = {}
+
         observer = Observer()
         observer.schedule(FifoWatcher(), path=FIFO_DIR, recursive=True)
+        observer.schedule(SubsWatcher(), path=SUBS_DIR)
         observer.start()
 
+        SERVER = self
 
     def read_client_send_to_kbfs(self, fifopath):
         """ Uses a thread for each fifo a client is writing to and streams their
@@ -91,6 +104,25 @@ class Server(object):
                filename + \
                "." + self._user_id + "." + self._device_id + ".sent"
 
+    def update_subs(self, subspath, deleted=False):
+        def path2uuid(subspath):
+            filename = subspath[subspath.rfind('/')+1:]
+            return filename[:filename.rfind('.subs')]
+
+        cid = path2uuid(subspath)
+        print("updating subscriptions for %s" % cid)
+        if deleted:
+            print("deleted subscriptions for %s" % cid)
+            del self._subs[cid]
+        else:
+            print("updated subscriptions for %s:" % cid)
+            self._subs[cid] = list()
+            with open(subspath, 'r') as f:
+                for line in f.readlines():
+                    names, channel = line.strip().split(INLINE_SEP)
+                    self._subs[cid].append((names, channel))
+            print(self._subs[cid])
+
     def _get_device_id(self):
         try:
             json_string = sp.getoutput('keybase status --json')
@@ -98,5 +130,4 @@ class Server(object):
         except:
             print("keybase status failed. Do you have keybase installed?")
             exit(-1)
-
 
