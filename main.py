@@ -16,18 +16,24 @@ SERVER = None
 #fifo.read("/tmp/kbrpc/private/lgessler,tondwalkar,prestwood/chat.sock")
 
 
-def run(fifopath,filepath):
+def write_client_data_to_kbfs(fifopath,filepath):
+    """ 
+    Args:
+        fifopath: the absolute path of a fifo a client created under SOCK_DIR
+        filepath: the file under /keybase that is distributed by KBFS to other
+                  servers
+    """
     # http://stackoverflow.com/questions/17449110/fifo-reading-in-a-loop
-    fifo=open(fifopath,"r")
+    fifo = open(fifopath, "r")
     for line in fifo.read():
-        with open(filepath,'a') as f:
+        with open(filepath, 'a') as f:
             f.write(line)
     fifo.close()
 
 class Watcher(PatternMatchingEventHandler):
     patterns = ["*.fifo"]
     def on_created(self, event):
-        SERVER.listen(event.src_path)
+        SERVER.read_client_send_to_kbfs(event.src_path)
 
 class Server(object):
     def __init__(self):
@@ -42,21 +48,31 @@ class Server(object):
         for fifopath in [os.path.join(dp, f) for dp, dn, fn in \
                 os.walk(os.path.expanduser(SOCK_DIR)) for f in fn if \
                 f.endswith('.fifo')]:
-            self.listen(fifopath)
+            self.read_client_send_to_kbfs(fifopath)
 
         self.clients = {} # name to subs
 
-    def listen(self, fifopath):
+    def read_client_send_to_kbfs(self, fifopath):
         print("Listening on " + fifopath)
         self._fifonames.append(fifopath)
-        t = thrd.Thread(target=run, args=(fifopath,self._fifo_to_path(fifopath)))
+        t = thrd.Thread(target=write_client_data_to_kbfs,
+                args=(fifopath, self._fifo_to_path(fifopath)))
         self._fifowriters.append(t)
         t.daemon = True
         t.start()
 
     def _fifo_to_path(self, fifo_path):
-        return "/keybase" + fifo_path[len("/tmp/kbrpc"):-len(".fifo")] + "." + \
-                self._user_id + "." + self._device_id + ".sent"
+        """ Given the path under SOCK_DIR for a file used for client --> server
+        communication, construct the corresponding path under /keybase for
+        server --> KBFS communication """
+        index1 = len("/tmp/kbrpc")
+        index2 = len(fifo_path[:fifo_path.rindex('/')])
+        filename = fifo_path[fifo_path.rindex('/') + 1 : fifo_path.rindex('.fifo')]
+        return "/keybase" + \
+               fifo_path[index1:index2] + \
+               "/.kbrpc/" + \
+               filename + \
+               "." + self._user_id + "." + self._device_id + ".sent"
 
     def _get_device_id(self):
         try:
@@ -65,8 +81,6 @@ class Server(object):
         except:
             print("keybase status failed. Do you have keybase installed?")
             exit(-1)
-
-
 
 if __name__ == '__main__':
     try:
