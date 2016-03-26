@@ -7,12 +7,11 @@ import threading as thrd
 from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
 
+from config import FIFO_DIR, SUBS_DIR
 
-
-FIFO_DIR = "/tmp/kbrpc/private"
 SERVER = None
 
-def write_client_data_to_kbfs(fifopath,filepath):
+def write_client_data_to_kbfs(fifopath, filepath):
     """ 
     Args:
         fifopath: the absolute path of a fifo a client created under FIFO_DIR
@@ -28,10 +27,15 @@ def write_client_data_to_kbfs(fifopath,filepath):
             f.write(line)
     fifo.close()
 
-class Watcher(PatternMatchingEventHandler):
+class FifoWatcher(PatternMatchingEventHandler):
     patterns = ["*.fifo"]
     def on_created(self, event):
         SERVER.read_client_send_to_kbfs(event.src_path)
+
+class SubsWatcher(PatternMatchingEventHandler):
+    patterns = ["*.subs"]
+
+
 
 class Server(object):
     def __init__(self):
@@ -54,7 +58,7 @@ class Server(object):
             self.read_client_send_to_kbfs(fifopath)
 
         observer = Observer()
-        observer.schedule(Watcher(), path=FIFO_DIR, recursive=True)
+        observer.schedule(FifoWatcher(), path=FIFO_DIR, recursive=True)
         observer.start()
 
 

@@ -1,6 +1,5 @@
 import os
 from server import Server, Watcher
-from watchdog.observers import Observer
 
 if __name__ == '__main__':
     #try:
