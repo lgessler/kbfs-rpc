@@ -15,6 +15,15 @@ SERVER = None
 
 #fifo.read("/tmp/kbrpc/private/lgessler,tondwalkar,prestwood/chat.sock")
 
+
+def run(fifopath,filepath):
+    # http://stackoverflow.com/questions/17449110/fifo-reading-in-a-loop
+    fifo=open(fifopath,"r")
+    for line in fifo.read():
+        with open(filepath,'a') as f:
+            f.write(line)
+    fifo.close()
+
 class Watcher(PatternMatchingEventHandler):
     patterns = ["*.fifo"]
     def on_created(self, event):
@@ -28,7 +37,7 @@ class Server(object):
         self._device_id = self._client_info['Device']['deviceID']
 
         self._fifonames = []
-        self._fifoobjs = []
+        self._fifowriters = []
 
         for fifopath in [os.path.join(dp, f) for dp, dn, fn in \
                 os.walk(os.path.expanduser(SOCK_DIR)) for f in fn if \
@@ -38,7 +47,16 @@ class Server(object):
         self.clients = {} # name to subs
 
     def listen(self, fifopath):
-        self._fifonames.append(event.src_path)
+        print("Listening on " + fifopath)
+        self._fifonames.append(fifopath)
+        t = thrd.Thread(target=run, args=(fifopath,self._fifo_to_path(fifopath)))
+        self._fifowriters.append(t)
+        t.daemon = True
+        t.start()
+
+    def _fifo_to_path(self, fifo_path):
+        return "/keybase" + fifo_path[len("/tmp/kbrpc"):-len(".fifo")] + "." + \
+                self._user_id + "." + self._device_id + ".sent"
 
     def _get_device_id(self):
         try:
@@ -60,5 +78,6 @@ if __name__ == '__main__':
     SERVER = Server()
 
     observer = Observer()
-    observer.schedule(Watcher(), path=SOCK_DIR)
+    observer.schedule(Watcher(), path=SOCK_DIR, recursive=True)
     observer.start()
+    input("Press any key to exit")
