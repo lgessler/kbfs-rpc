@@ -30,7 +30,8 @@ def write_client_data_to_kbfs(fifopath, filepath):
 class FifoWatcher(PatternMatchingEventHandler):
     patterns = ["*.fifo"]
     def on_created(self, event):
-        SERVER.read_client_send_to_kbfs(event.src_path)
+        if SERVER._device_id in event.src_path:
+            SERVER.read_client_send_to_kbfs(event.src_path)
 
 class SubsWatcher(PatternMatchingEventHandler):
     patterns = ["*.subs"]
@@ -86,10 +87,10 @@ class Server(object):
         t.daemon = True
         t.start()
 
-    def read_kbfs_send_to_client(self):
-        """ Watch /keybase directories for new messages from other clients and
-        stream their contents to clients """
-        pass
+    def read_kbfs_send_to_client(self, fifopath):
+        """ Once someone writes to a file under FIFO_DIR that doesn't
+        belong to the SERVER._device_id, this method is invoked """
+         
 
     def _fifo_to_path(self, fifo_path):
         """ Given the path under FIFO_DIR for a file used for client --> server
