@@ -4,10 +4,11 @@ import json
 import subprocess as sp
 import socket
 import threading as thrd
+from operator import add
 from watchdog.events import PatternMatchingEventHandler
 from watchdog.observers import Observer
 
-from config import FIFO_DIR, SUBS_DIR, INLINE_SEP
+from config import FIFO_DIR, SUBS_DIR, INLINE_SEP, APP_DIR, HIDDEN_APP_DIR
 
 SERVER = None
 
@@ -68,6 +69,7 @@ class Server(object):
             self.read_client_send_to_kbfs(fifopath)
 
         self._subs = {}
+        self._poll_dirs = []
 
         observer = Observer()
         observer.schedule(FifoWatcher(), path=FIFO_DIR, recursive=True)
@@ -82,7 +84,7 @@ class Server(object):
         print("Listening on " + fifopath)
         self._fifonames.append(fifopath)
         t = thrd.Thread(target=write_client_data_to_kbfs,
-                args=(fifopath, self._fifo_to_path(fifopath)))
+                args=(fifopath, self._fifopath_to_keybasepath(fifopath)))
         self._fifowriters.append(t)
         t.daemon = True
         t.start()
@@ -90,18 +92,18 @@ class Server(object):
     def read_kbfs_send_to_client(self, fifopath):
         """ Once someone writes to a file under FIFO_DIR that doesn't
         belong to the SERVER._device_id, this method is invoked """
-         
+        pass
 
-    def _fifo_to_path(self, fifo_path):
+    def _fifopath_to_keybasepath(self, fifo_path):
         """ Given the path under FIFO_DIR for a file used for client --> server
         communication, construct the corresponding path under /keybase for
         server --> KBFS communication """
-        index1 = len("/tmp/kbrpc")
+        index1 = len("/tmp/" + APP_DIR)
         index2 = len(fifo_path[:fifo_path.rindex('/')])
         filename = fifo_path[fifo_path.rindex('/') + 1 : fifo_path.rindex('.fifo')]
         return "/keybase" + \
                fifo_path[index1:index2] + \
-               "/.kbrpc/" + \
+               "/" + HIDDEN_APP_DIR + "/" + \
                filename + \
                "." + self._user_id + "." + self._device_id + ".sent"
 
@@ -115,6 +117,7 @@ class Server(object):
         if deleted:
             print("deleted subscriptions for %s" % cid)
             del self._subs[cid]
+
         else:
             print("updated subscriptions for %s:" % cid)
             self._subs[cid] = list()
@@ -123,6 +126,11 @@ class Server(object):
                     names, channel = line.strip().split(INLINE_SEP)
                     self._subs[cid].append((names, channel))
             print(self._subs[cid])
+
+        # update list of abs filepaths that need to be watched
+        tuples = list(set(reduce(add, self._subs.values())))
+        
+        self._poll_dirs = 
 
     def _get_device_id(self):
         try:
