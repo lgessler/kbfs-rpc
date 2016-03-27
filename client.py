@@ -56,9 +56,9 @@ class Client(object):
             raise Exception("Can't send message on a channel you're not"
                     "subscribed to")
         fname = self._get_fifo_in_name(names, channel)
-        with open(fname, 'a') as f:
+        with open(fname, 'w') as f:
             f.write(INLINE_SEP.join([str(now()), 'lgessler', 
-                b64encode(str.encode(m)).decode()]))
+                b64encode(str.encode(m)).decode()]) + "\n")
 
     def on_message(self, m):
         pass
