@@ -1,4 +1,4 @@
-**DISCLAIMER:** This is a proof of concept and it's almost entirely broken. DO NOT use this for anything more than amusement.
+**NOTE:** This is a proof of concept and it's almost entirely broken. DO NOT use this for anything more than amusement.
 
 #Keybase RPC
 
