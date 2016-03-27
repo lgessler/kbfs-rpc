@@ -10,10 +10,13 @@ from operator import add
 from watchdog.events import PatternMatchingEventHandler, FileSystemEventHandler
 from watchdog.observers import Observer
 from watchdog.observers.polling import PollingObserver
+from collections import defaultdict
 
 from config import FIFO_DIR, SUBS_DIR, INLINE_SEP, APP_DIR, HIDDEN_APP_DIR, \
         KBFS_WATCHER_THREAD_SLEEP
+from common import Message, now
 
+# only one per machine
 SERVER = None
 
 def write_client_data_to_kbfs(fifopath, filepath):
@@ -28,33 +31,25 @@ def write_client_data_to_kbfs(fifopath, filepath):
     # http://stackoverflow.com/questions/17449110/fifo-reading-in-a-loop
     fifo = open(fifopath, "r")
     for line in fifo.read():
+        print("Writing line to %s" % filepath)
         with open(filepath, 'a') as f:
             f.write(line)
     fifo.close()
 
-class FifoWatcher(PatternMatchingEventHandler):
-    patterns = ["*.fifo"]
-    def on_created(self, event):
-        if SERVER._device_name in event.src_path:
-            SERVER.read_client_send_to_kbfs(event.src_path)
-        else:
-            pass # fifos that this device isn't writing to
-
-class SubsWatcher(PatternMatchingEventHandler):
-    patterns = ["*.subs"]
-
-    def on_created(self, event):
-        SERVER.update_subs(event.src_path)
-
-    def on_modified(self, event):
-        SERVER.update_subs(event.src_path)
-
-    def on_deleted(self, event):
-        SERVER.update_subs(event.src_path, deleted=True)
+def write_kbfs_data_to_client(fifopath, message):
+    # CHANGEME
+    fifo = open(fifopath, "r")
+    fifo.write(message)
+    fifo.close()
 
 class KbfsWatcher(object):
-    def __init__(self, path):
+    def __init__(self, path, names, channel):
         self.path = path
+        self.names = names
+        self.channel = channel
+        self.fifo_filename= "/".join([FIFO_DIR, self.names, self.channel + ".out.fifo"])
+
+        self.last_accessed = defaultdict(0)
         self.old_dir_listing = dict()
         print("KbfsWatcher watching %s" % self.path)
         self.thread = None
@@ -83,14 +78,26 @@ class KbfsWatcher(object):
 
             self.old_dir_listing = new_dir_listing
         
+    def _write_new_lines(self, fname):
+        last_accessed = self.last_accessed[fname]
+        with open(fname, 'r') as f:
+            for line in f.readlines():
+                time_made = int(line.strip().split(INLINE_SEP)[0])
+                if time_made > last_accessed:
+                    write_kbfs_data_to_client(self.fifo_filename, line)
+        self.last_accessed[fname] = now()
+
     def on_modified(self, fname):
+        self._write_new_lines(fname) 
         print("File %s modified" % fname)
 
     def on_created(self, fname):
+        self._write_new_lines(fname) 
         print("File %s created" % fname)
 
     def on_deleted(self, fname):
-        print("File %s deleted" % fname)
+        pass # unsupported action
+        #print("File %s deleted" % fname)
 
     def start(self):
         self.thread = thrd.Thread(
@@ -102,6 +109,8 @@ class KbfsWatcher(object):
         self.not_stopped = False
         self.thread.join()
         print("Stopping KbfsWatcher for %s" % self.path)
+
+  
 
 class Server(object):
     def __init__(self):
@@ -117,20 +126,15 @@ class Server(object):
         self._user_id = self._client_info['UserID']
         self._device_name = self._client_info['Device']['name']
 
-        self._fifo_names = []
-        self._fifo_writers = []
-
-        for fifopath in [os.path.join(dp, f) for dp, dn, fn in \
-                os.walk(os.path.expanduser(FIFO_DIR)) for f in fn if \
-                f.endswith('.fifo')]:
-            self.read_client_send_to_kbfs(fifopath)
-
         self._subs = {}
-        self._kbfs_dirs = []
-        self._kbfs_watchers = []
+        self._kbfs_watchers = {}
+
+        # key: dir of file
+        # value: thread managing it
+        self._out_fifo_dict = dict()
+        self._in_fifo_dict = dict()
 
         observer = Observer()
-        observer.schedule(FifoWatcher(), path=FIFO_DIR, recursive=True)
         observer.schedule(SubsWatcher(), path=SUBS_DIR)
         observer.start()
 
@@ -147,11 +151,6 @@ class Server(object):
         t.daemon = True
         t.start()
 
-    def read_kbfs_send_to_client(self, fifopath):
-        """ Once someone writes to a file under FIFO_DIR that doesn't
-        belong to the SERVER._device_name, this method is invoked """
-        pass
-
     def _fifopath_to_keybasepath(self, fifo_path):
         """ Given the path under FIFO_DIR for a file used for client --> server
         communication, construct the corresponding path under /keybase for
@@ -166,43 +165,104 @@ class Server(object):
                "." + self._user_id + "." + self._device_name + ".sent"
 
     def update_subs(self, subspath, deleted=False):
-        def path2uuid(subspath):
-            filename = subspath[subspath.rfind('/')+1:]
-            return filename[:filename.rfind('.subs')]
-
-        cid = path2uuid(subspath)
-        print("updating subscriptions for %s" % cid)
+        cid = self._path2uuid(subspath)
+        print("Updating sub for %s" % subspath)
         if deleted:
-            print("deleted subscriptions for %s" % cid)
-            del self._subs[cid]
-
+            self._delete_all_subs(cid)
         else:
-            print("updated subscriptions for %s:" % cid)
-            self._subs[cid] = list()
+            room_tuples = list()
+
             with open(subspath, 'r') as f:
                 for line in f.readlines():
                     names, channel = line.strip().split(INLINE_SEP)
-                    self._subs[cid].append((names, channel))
-            print(self._subs[cid])
+                    room_tuples.append((names,channel))
 
-        # update list of abs filepaths that need to be watched
-        tuples = list(set(reduce(add, self._subs.values())))
-        self._update_kbfs_watchers(tuples)
+            if self._subs.values():
+                existing_room_tuples = list(set(reduce(add, self._subs.values())))
+            else:
+                existing_room_tuples = []
 
-    def _update_kbfs_watchers(self, tuples):
-        new_dirs = [self._tuple_to_kbfs_dir(names, channel) for names, channel in tuples]
-        for newdir in set(new_dirs) - set(self._kbfs_dirs):
-            self._kbfs_watchers.append(KbfsWatcher(newdir))
-            self._kbfs_watchers[-1].start()
+            for names, channel in room_tuples:
+                if (names, channel) not in existing_room_tuples:
+                    self._add_room(cid, names, channel)
 
-        # stop watchers on paths that are no longer subbed
-        for watcher in self._kbfs_watchers:
-            if watcher.path not in new_dirs:
-                watcher.stop()
-        self._kbfs_dirs = new_dirs
+            for names, channel in existing_room_tuples:
+                if (names, channel) not in room_tuples:
+                    self._remove_room(cid, names, channel)
+
+            print("updated subscriptions for %s:" % cid)
+
+    def _delete_all_subs(self, cid):
+        """ Delete all subscriptions for a particular client """
+        print("Deleting all subscriptions for client %s" % cid)
+        del self._subs[cid]
+
+    def _remove_room(self, cid, names, channel):
+        """ Remove a room for a particular client """
+        self._subs[cid] = [(nms, chnl) for (nms, chnl) in self._subs[cid] \
+                if not (nms == names and chnl == channel)]
+        self._check_if_remove_watcher(existed_before)
+
+    def _add_room(self, cid, names, channel):
+        """ Add a room for a particular client """
+        existed_before = self._get_unique_rooms()
+
+        if cid not in self._subs:
+            self._subs[cid] = list()
+
+        if not (names, channel) in self._subs[cid]:
+            self._subs[cid].append((names, channel))
+        self._check_if_remove_watcher(existed_before)
+
+    def _check_if_remove_watcher(self, old_room_list):
+        new_room_list = self._get_unique_rooms()
+        for room in old_room_list:
+            if room not in new_room_list:
+                # delete in and out fifos
+                self._kbfs_watchers[room].stop()
+                del self._kbfs_watchers[room]
+
+    def _check_if_add_watcher(self, old_room_list):
+        new_room_list = self._get_unique_rooms()
+        for room in new_room_list:
+            if room not in old_room_list:
+                self._make_fifos(room)
+                self._kbfs_watchers[room] = KbfsWatcher(
+                        self._tuple_to_kbfs_dir(room[0], room[1]), room[0],
+                        room[1])
+                self._kbfs_watchers[room].start()
+
+    def _get_unique_rooms(self):
+        """ List of unique (names, channel) tuples (rooms) """
+        if self._subs.values():
+            return list(set(reduce(add, self._subs.values())))
+        return list()
 
     def _tuple_to_kbfs_dir(self, names, channel):
         return "/keybase/private/" + names + "/" + HIDDEN_APP_DIR + "/" + channel
+
+    def _path2uuid(self, subspath):
+        filename = subspath[subspath.rfind('/')+1:]
+        return filename[:filename.rfind('.subs')]
+
+    def _make_fifos(self, room):
+        names, channel = room
+        in_fifo_filename = "/".join([FIFO_DIR, names, channel + ".in.fifo"])
+        out_fifo_filename = "/".join([FIFO_DIR, names, channel + ".out.fifo"])
+        os.call(['mkfifo', in_fifo_filename])
+        os.call(['mkfifo', out_fifo_filename])
+
+        t = thrd.Thread(
+                target=write_client_data_to_kbfs,
+                args=(in_fifo_filename, self._fifopath_to_keybasepath))
+        t.daemon = True
+        self._out_fifo_dict[out_fifo_filename] = t
+        t.start()
+
+        # writing to in fifo is handled by KbfsWatcher made in
+        # _check_if_add_watcher
+
+
 
     def _get_device_name(self):
         try:
@@ -211,4 +271,17 @@ class Server(object):
         except:
             print("keybase status failed. Do you have keybase installed?")
             exit(-1)
+
+class SubsWatcher(PatternMatchingEventHandler):
+    patterns = ["*.subs"]
+
+    def on_created(self, event):
+        SERVER.update_subs(event.src_path)
+
+    def on_modified(self, event):
+        SERVER.update_subs(event.src_path)
+
+    def on_deleted(self, event):
+        SERVER.update_subs(event.src_path, deleted=True)
+
 
