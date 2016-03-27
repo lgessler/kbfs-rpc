@@ -5,6 +5,7 @@ from common import now
 from base64 import b64encode
 import time
 from time import sleep
+import subprocess as sp
 import threading as thrd
 import json
 
@@ -28,7 +29,8 @@ class Client(object):
         """
         self.tok = uuid.uuid4().hex  # nonce identifier
         self.subsfilename = os.path.join(SUBS_DIR, self.tok + '.subs')
-        self.sender = self._get_client_info['Username']
+        self.sender = self._get_client_info()['Username']
+        #self.sender = 'lgessler'
 
         self._subs = list()
         self._threads = {}
