@@ -32,6 +32,7 @@ def write_client_data_to_kbfs(fifopath, filepath):
         with open(filepath, 'a') as f:
             f.write(line)
     fifo.close()
+    print("exiting writE_client_data_to_kbfs")
 
 def write_kbfs_data_to_client(fifopath, message):
     fifo = open(fifopath, "w")
