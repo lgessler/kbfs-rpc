@@ -27,11 +27,16 @@ def write_client_data_to_kbfs(fifopath, filepath):
                   servers
     """
     # http://stackoverflow.com/questions/17449110/fifo-reading-in-a-loop
-    fifo = open(fifopath, "r")
-    for line in fifo.read():
-        with open(filepath, 'a') as f:
-            f.write(line)
-    fifo.close()
+    while True:
+        fifo = open(fifopath, "r")
+        accum = ""
+        for line in fifo.read():
+            accum += line
+            if "\n" in accum:
+                with open(filepath, 'a') as f:
+                    f.write(accum[:accum.index("\n")+1])
+                    accum = accum[accum.index("\n")+1:]
+        fifo.close()
     print("exiting writE_client_data_to_kbfs")
 
 def write_kbfs_data_to_client(fifopath, message):
@@ -82,7 +87,10 @@ class KbfsWatcher(object):
         with open(os.path.join(self.path, fname), 'r') as f:
             for line in f.readlines():
                 time_made = int(line.strip().split(INLINE_SEP)[0])
+                print("time made\t", time_made)
+                print("last_accessed\t", last_accessed)
                 if time_made > last_accessed:
+                    print("found new lines in %s" % fname)
                     write_kbfs_data_to_client(self.fifo_filename, line)
         self.last_accessed[fname] = now()
 
@@ -237,6 +245,7 @@ class Server(object):
         names, channel = room
         print("trying to make fifos for %s, %s" % (names, channel))
         sp.call(['mkdir', '-p', "/".join([FIFO_DIR, names])])
+        sp.call(['mkdir', '-p', self._tuple_to_kbfs_dir(names, channel)])
         in_fifo_filename = "/".join([FIFO_DIR, names, channel + ".in.fifo"])
         out_fifo_filename = "/".join([FIFO_DIR, names, channel + ".out.fifo"])
         sp.call(['mkfifo', in_fifo_filename])

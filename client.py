@@ -3,6 +3,7 @@ import os
 from config import FIFO_DIR, SUBS_DIR, INLINE_SEP
 from common import now, Message
 from base64 import b64encode
+from time import sleep
 import threading as thrd
 
 class Client(object):
@@ -64,14 +65,22 @@ class Client(object):
         t.start()
 
     def _listen_to_inbound_fifo(self, fifopath):
-        fifo = open(fifopath, 'r')
-        accum = ""
-        for line in fifo.read():
-            accum += line
-            if "\n" in accum:
-                self.on_message(accum[:accum.index("\n")])
-                accum = accum[accum.index("\n")+1:]
-        fifo.close()
+        # dear god don't let me get away with this
+        while True:
+            try:
+                fifo = open(fifopath, 'r')
+            except:
+                # wait for it to get created
+                sleep(2) # make this more elegant
+                fifo = open(fifopath, 'r')
+
+            accum = ""
+            for line in fifo.read():
+                accum += line
+                if "\n" in accum:
+                    self.on_message(accum[:accum.index("\n")])
+                    accum = accum[accum.index("\n")+1:]
+            fifo.close()
 
     def _destroy_inbound_listener_thread(self, names, channel):
         t = self._threads[(names, channel)]
