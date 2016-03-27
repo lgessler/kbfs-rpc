@@ -10,7 +10,7 @@ class MyClient(Client):
     def on_message(self, m):
         m = m.split(chr(7))
         timestamp = datetime.datetime.fromtimestamp(
-            int(m[0]/1000)
+            int(m[0])/1000
         ).strftime('%Y-%m-%d %H:%M:%S')
         print(timestamp, m[1] + ": ", + b64.b64decode(m[2]).decode())
 
