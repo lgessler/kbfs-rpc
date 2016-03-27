@@ -40,7 +40,7 @@ class Client(object):
     #    os.remove(self.subsfilename)
 
     def sub(self, names, channel):
-        print("Writing to", SUBS_DIR + '/' + self.tok + '.subs')
+        #print("Writing to", SUBS_DIR + '/' + self.tok + '.subs')
         self._subs.append((names, channel))
         with open(self.subsfilename, 'a') as f:
             f.write("{}{}{}\n".format(names, INLINE_SEP, channel))
@@ -73,7 +73,7 @@ class Client(object):
                 args=(self._get_fifo_out_name(names, channel),))
         t.daemon = True
         self._threads[(names, channel)] = t
-        print("Added thread for %s, %s" % (names, channel))
+        #print("Added thread for %s, %s" % (names, channel))
         t.start()
 
     def _listen_to_inbound_fifo(self, fifopath):

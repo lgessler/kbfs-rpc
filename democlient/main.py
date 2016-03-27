@@ -1,4 +1,5 @@
 from client import Client
+import base64 as b64
 import datetime
 
 c = Client()
@@ -12,7 +13,7 @@ class MyClient(Client):
         timestamp = datetime.datetime.fromtimestamp(
             int(m[0])/1000
         ).strftime('%Y-%m-%d %H:%M:%S')
-        print(timestamp, m[1] + ": ", + b64.b64decode(m[2]).decode())
+        print(timestamp, m[1] + ": " + b64.b64decode(m[2]).decode())
 
 if __name__ == '__main__':
     c = MyClient()
