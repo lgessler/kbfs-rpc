@@ -44,7 +44,6 @@ class KbfsWatcher(object):
         self.names = names
         self.channel = channel
         self.fifo_filename= "/".join([FIFO_DIR, self.names, self.channel + ".out.fifo"])
-        print("SELF FIFO FILENAME:", self.fifo_filename)
 
         self.last_accessed = defaultdict(lambda: 0)
         self.old_dir_listing = dict()
@@ -74,10 +73,12 @@ class KbfsWatcher(object):
                     self.on_deleted(fname)
 
             self.old_dir_listing = new_dir_listing
+
+        print("KbfsWatcher for %s exiting" % self.path)
         
     def _write_new_lines(self, fname):
         last_accessed = self.last_accessed[fname]
-        with open(fname, 'r') as f:
+        with open(os.path.join(self.path, fname), 'r') as f:
             for line in f.readlines():
                 time_made = int(line.strip().split(INLINE_SEP)[0])
                 if time_made > last_accessed:
@@ -106,7 +107,6 @@ class KbfsWatcher(object):
         self.not_stopped = False
         self.thread.join()
         print("Stopping KbfsWatcher for %s" % self.path)
-
   
 
 class Server(object):
@@ -226,7 +226,7 @@ class Server(object):
         return list()
 
     def _tuple_to_kbfs_dir(self, names, channel):
-        return "/keybase/private/" + names + "/" + HIDDEN_APP_DIR + "/" + channel
+        return "/keybase/private/" + names + "/" + HIDDEN_APP_DIR
 
     def _path2uuid(self, subspath):
         filename = subspath[subspath.rfind('/')+1:]
