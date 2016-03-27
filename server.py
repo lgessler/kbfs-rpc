@@ -15,9 +15,18 @@ from collections import defaultdict
 from config import FIFO_DIR, SUBS_DIR, INLINE_SEP, APP_DIR, HIDDEN_APP_DIR, \
         KBFS_WATCHER_THREAD_SLEEP
 from common import Message, now
+from uuid import uuid4
 
 # only one per machine
 SERVER = None
+
+def _flush_fifo():
+    """
+    A horrible hack: workaround for FIFOs not working immediately for OSX
+    """
+    nm = uuid4().hex
+    sp.call(['touch', os.path.join(FIFO_DIR, nm)])
+    sp.call(['rm', os.path.join(FIFO_DIR, nm)])
 
 def write_client_data_to_kbfs(fifopath, filepath):
     """ 
@@ -36,17 +45,19 @@ def write_client_data_to_kbfs(fifopath, filepath):
                 with open(filepath, 'a') as f:
                     f.write(accum[:accum.index("\n")+1])
                     accum = accum[accum.index("\n")+1:]
+                _flush_fifo()
         fifo.close()
-    print("exiting writE_client_data_to_kbfs")
 
 def write_kbfs_data_to_client(fifopath, message):
     fifo = open(fifopath, "w")
     fifo.write(message)
     fifo.close()
+    _flush_fifo()
 
 class KbfsWatcher(object):
     def __init__(self, path, names, channel):
         self.path = path
+        sp.call(['mkdir', '-p', self.path])
         self.names = names
         self.channel = channel
         self.fifo_filename= "/".join([FIFO_DIR, self.names, self.channel + ".out.fifo"])
@@ -87,8 +98,6 @@ class KbfsWatcher(object):
         with open(os.path.join(self.path, fname), 'r') as f:
             for line in f.readlines():
                 time_made = int(line.strip().split(INLINE_SEP)[0])
-                print("time made\t", time_made)
-                print("last_accessed\t", last_accessed)
                 if time_made > last_accessed:
                     print("found new lines in %s" % fname)
                     write_kbfs_data_to_client(self.fifo_filename, line)
@@ -127,7 +136,7 @@ class Server(object):
         except:
             os.makedirs(FIFO_DIR)
 
-        self._client_info = self._get_device_name()
+        self._client_info = self._get_client_info()
         self._username = self._client_info['Username']
         self._user_id = self._client_info['UserID']
         self._device_name = self._client_info['Device']['name']
@@ -264,7 +273,7 @@ class Server(object):
 
 
 
-    def _get_device_name(self):
+    def _get_client_info(self):
         try:
             json_string = sp.getoutput('keybase status --json')
             return json.loads(json_string)

@@ -1,10 +1,19 @@
 import uuid
 import os
 from config import FIFO_DIR, SUBS_DIR, INLINE_SEP
-from common import now, Message
+from common import now
 from base64 import b64encode
+import time
 from time import sleep
 import threading as thrd
+import json
+
+FIFO_DIR = "/tmp/kbrpc/private"
+SUBS_DIR = "/tmp/kbrpc" 
+INLINE_SEP = chr(7)
+def now():
+    """ current time rounded down to nearest milli"""
+    return int(time.time() * 1000)
 
 class Client(object):
     def __init__(self, subs=[]):
@@ -19,6 +28,7 @@ class Client(object):
         """
         self.tok = uuid.uuid4().hex  # nonce identifier
         self.subsfilename = os.path.join(SUBS_DIR, self.tok + '.subs')
+        self.sender = self._get_client_info['Username']
 
         self._subs = list()
         self._threads = {}
@@ -37,6 +47,7 @@ class Client(object):
         self._make_inbound_listener_thread(names, channel)
 
     def unsub(self, names, channel):
+        #TODO: fix this. How to stop threads while they're blocked on IO?
         with open(self.subsfilename, 'r') as f:
             lines = f.readlines()
 
@@ -62,6 +73,7 @@ class Client(object):
                 args=(self._get_fifo_out_name(names, channel),))
         t.daemon = True
         self._threads[(names, channel)] = t
+        print("Added thread for %s, %s" % (names, channel))
         t.start()
 
     def _listen_to_inbound_fifo(self, fifopath):
@@ -84,7 +96,7 @@ class Client(object):
 
     def _destroy_inbound_listener_thread(self, names, channel):
         t = self._threads[(names, channel)]
-        t.stop()
+        # stop thread somehow
         del self._threads[(names, channel)]
 
     def send_message(self, m, names, channel):
@@ -94,8 +106,20 @@ class Client(object):
 
         fname = self._get_fifo_in_name(names, channel)
         with open(fname, 'w') as f:
-            f.write(INLINE_SEP.join([str(now()), 'lgessler', 
+            f.write(INLINE_SEP.join([str(now()), self.sender, 
                 b64encode(str.encode(m)).decode()]) + "\n")
 
     def on_message(self, m):
         print("Client receives message: %s" % m)
+
+    def _get_client_info(self):
+        try:
+            json_string = sp.getoutput('keybase status --json')
+            return json.loads(json_string)
+        except:
+            print("keybase status failed. Do you have keybase installed?")
+            exit(-1)
+
+
+
+
