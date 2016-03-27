@@ -36,8 +36,8 @@ class Client(object):
             for names, channel in subs:
                 self.sub(names, channel)
 
-    def __del__(self):
-        os.remove(self.subsfilename)
+    #def __del__(self):
+    #    os.remove(self.subsfilename)
 
     def sub(self, names, channel):
         print("Writing to", SUBS_DIR + '/' + self.tok + '.subs')

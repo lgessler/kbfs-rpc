@@ -4,7 +4,8 @@ import datetime
 c = Client()
 
 class MyClient(Client):
-    # send_message(self, m, names, channel)
+    def __init__(self):
+        super().__init__()
 
     def on_message(self, m):
         m = m.split(chr(7))
@@ -21,15 +22,15 @@ if __name__ == '__main__':
     channel = "chat"
     c.sub(names, channel)
 
-    try:
-        while True:
-            line = input()
-            if line.strip() == 'exit':
-                exit(0)
-            else:
-                c.send_message(line, names, channel)
-    except KeyboardInterrupt:
-        c.__del__()
-        exit(0)
+    #try:
+    while True:
+        line = input()
+        if line.strip() == 'exit':
+            exit(0)
+        else:
+            c.send_message(line, names, channel)
+    #except KeyboardInterrupt:
+    #    c.__del__()
+    #    exit(0)
 
 
