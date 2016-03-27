@@ -4,11 +4,15 @@ import json
 import subprocess as sp
 import socket
 import threading as thrd
+from time import sleep
+from functools import reduce
 from operator import add
-from watchdog.events import PatternMatchingEventHandler
+from watchdog.events import PatternMatchingEventHandler, FileSystemEventHandler
 from watchdog.observers import Observer
+from watchdog.observers.polling import PollingObserver
 
-from config import FIFO_DIR, SUBS_DIR, INLINE_SEP, APP_DIR, HIDDEN_APP_DIR
+from config import FIFO_DIR, SUBS_DIR, INLINE_SEP, APP_DIR, HIDDEN_APP_DIR, \
+        KBFS_WATCHER_THREAD_SLEEP
 
 SERVER = None
 
@@ -31,8 +35,10 @@ def write_client_data_to_kbfs(fifopath, filepath):
 class FifoWatcher(PatternMatchingEventHandler):
     patterns = ["*.fifo"]
     def on_created(self, event):
-        if SERVER._device_id in event.src_path:
+        if SERVER._device_name in event.src_path:
             SERVER.read_client_send_to_kbfs(event.src_path)
+        else:
+            pass # fifos that this device isn't writing to
 
 class SubsWatcher(PatternMatchingEventHandler):
     patterns = ["*.subs"]
@@ -46,6 +52,57 @@ class SubsWatcher(PatternMatchingEventHandler):
     def on_deleted(self, event):
         SERVER.update_subs(event.src_path, deleted=True)
 
+class KbfsWatcher(object):
+    def __init__(self, path):
+        self.path = path
+        self.old_dir_listing = dict()
+        print("KbfsWatcher watching %s" % self.path)
+        self.thread = None
+        self.not_stopped = True
+
+    def check_dir(self):
+        print("Entered check_dir")
+        print(self.not_stopped)
+        while self.not_stopped:
+            new_dir_listing = {}
+
+            fnames = os.listdir(self.path)
+            fnames = [x for x in fnames if x.endswith('.sent')]
+
+            for fname in fnames:
+                new_dir_listing[fname] = os.path.getsize(
+                        os.path.join(self.path, fname))
+                if fname not in self.old_dir_listing:
+                    self.on_created(fname)
+                elif new_dir_listing[fname] != self.old_dir_listing[fname]:
+                    self.on_modified(fname)
+
+            for fname in self.old_dir_listing:
+                if fname not in new_dir_listing:
+                    self.on_deleted(fname)
+
+            self.old_dir_listing = new_dir_listing
+        
+    def on_modified(self, fname):
+        print("File %s modified" % fname)
+
+    def on_created(self, fname):
+        print("File %s created" % fname)
+
+    def on_deleted(self, fname):
+        print("File %s deleted" % fname)
+
+    def start(self):
+        self.thread = thrd.Thread(
+                target=self.check_dir,
+                args=tuple())
+        self.thread.start()
+
+    def stop(self):
+        self.not_stopped = False
+        self.thread.join()
+        print("Stopping KbfsWatcher for %s" % self.path)
+
 class Server(object):
     def __init__(self):
         global SERVER
@@ -55,13 +112,13 @@ class Server(object):
         except:
             os.makedirs(FIFO_DIR)
 
-        self._client_info = self._get_device_id()
+        self._client_info = self._get_device_name()
         self._username = self._client_info['Username']
         self._user_id = self._client_info['UserID']
-        self._device_id = self._client_info['Device']['deviceID']
+        self._device_name = self._client_info['Device']['name']
 
-        self._fifonames = []
-        self._fifowriters = []
+        self._fifo_names = []
+        self._fifo_writers = []
 
         for fifopath in [os.path.join(dp, f) for dp, dn, fn in \
                 os.walk(os.path.expanduser(FIFO_DIR)) for f in fn if \
@@ -69,7 +126,8 @@ class Server(object):
             self.read_client_send_to_kbfs(fifopath)
 
         self._subs = {}
-        self._poll_dirs = []
+        self._kbfs_dirs = []
+        self._kbfs_watchers = []
 
         observer = Observer()
         observer.schedule(FifoWatcher(), path=FIFO_DIR, recursive=True)
@@ -82,16 +140,16 @@ class Server(object):
         """ Uses a thread for each fifo a client is writing to and streams their
         contents to the corresponding files under /keybase """
         print("Listening on " + fifopath)
-        self._fifonames.append(fifopath)
+        self._fifo_names.append(fifopath)
         t = thrd.Thread(target=write_client_data_to_kbfs,
                 args=(fifopath, self._fifopath_to_keybasepath(fifopath)))
-        self._fifowriters.append(t)
+        self._fifo_writers.append(t)
         t.daemon = True
         t.start()
 
     def read_kbfs_send_to_client(self, fifopath):
         """ Once someone writes to a file under FIFO_DIR that doesn't
-        belong to the SERVER._device_id, this method is invoked """
+        belong to the SERVER._device_name, this method is invoked """
         pass
 
     def _fifopath_to_keybasepath(self, fifo_path):
@@ -105,7 +163,7 @@ class Server(object):
                fifo_path[index1:index2] + \
                "/" + HIDDEN_APP_DIR + "/" + \
                filename + \
-               "." + self._user_id + "." + self._device_id + ".sent"
+               "." + self._user_id + "." + self._device_name + ".sent"
 
     def update_subs(self, subspath, deleted=False):
         def path2uuid(subspath):
@@ -129,10 +187,24 @@ class Server(object):
 
         # update list of abs filepaths that need to be watched
         tuples = list(set(reduce(add, self._subs.values())))
-        
-        self._poll_dirs = 
+        self._update_kbfs_watchers(tuples)
 
-    def _get_device_id(self):
+    def _update_kbfs_watchers(self, tuples):
+        new_dirs = [self._tuple_to_kbfs_dir(names, channel) for names, channel in tuples]
+        for newdir in set(new_dirs) - set(self._kbfs_dirs):
+            self._kbfs_watchers.append(KbfsWatcher(newdir))
+            self._kbfs_watchers[-1].start()
+
+        # stop watchers on paths that are no longer subbed
+        for watcher in self._kbfs_watchers:
+            if watcher.path not in new_dirs:
+                watcher.stop()
+        self._kbfs_dirs = new_dirs
+
+    def _tuple_to_kbfs_dir(self, names, channel):
+        return "/keybase/private/" + names + "/" + HIDDEN_APP_DIR + "/" + channel
+
+    def _get_device_name(self):
         try:
             json_string = sp.getoutput('keybase status --json')
             return json.loads(json_string)
