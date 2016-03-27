@@ -25,20 +25,16 @@ def write_client_data_to_kbfs(fifopath, filepath):
         fifopath: the absolute path of a fifo a client created under FIFO_DIR
         filepath: the file under /keybase that is distributed by KBFS to other
                   servers
-
-    Used as the body of a thread created in Server.read_client_send_to_kbfs
     """
     # http://stackoverflow.com/questions/17449110/fifo-reading-in-a-loop
     fifo = open(fifopath, "r")
     for line in fifo.read():
-        print("Writing line to %s" % filepath)
         with open(filepath, 'a') as f:
             f.write(line)
     fifo.close()
 
 def write_kbfs_data_to_client(fifopath, message):
-    # CHANGEME
-    fifo = open(fifopath, "r")
+    fifo = open(fifopath, "w")
     fifo.write(message)
     fifo.close()
 
@@ -48,8 +44,9 @@ class KbfsWatcher(object):
         self.names = names
         self.channel = channel
         self.fifo_filename= "/".join([FIFO_DIR, self.names, self.channel + ".out.fifo"])
+        print("SELF FIFO FILENAME:", self.fifo_filename)
 
-        self.last_accessed = defaultdict(0)
+        self.last_accessed = defaultdict(lambda: 0)
         self.old_dir_listing = dict()
         print("KbfsWatcher watching %s" % self.path)
         self.thread = None
@@ -140,17 +137,6 @@ class Server(object):
 
         SERVER = self
 
-    def read_client_send_to_kbfs(self, fifopath):
-        """ Uses a thread for each fifo a client is writing to and streams their
-        contents to the corresponding files under /keybase """
-        print("Listening on " + fifopath)
-        self._fifo_names.append(fifopath)
-        t = thrd.Thread(target=write_client_data_to_kbfs,
-                args=(fifopath, self._fifopath_to_keybasepath(fifopath)))
-        self._fifo_writers.append(t)
-        t.daemon = True
-        t.start()
-
     def _fifopath_to_keybasepath(self, fifo_path):
         """ Given the path under FIFO_DIR for a file used for client --> server
         communication, construct the corresponding path under /keybase for
@@ -212,7 +198,7 @@ class Server(object):
 
         if not (names, channel) in self._subs[cid]:
             self._subs[cid].append((names, channel))
-        self._check_if_remove_watcher(existed_before)
+        self._check_if_add_watcher(existed_before)
 
     def _check_if_remove_watcher(self, old_room_list):
         new_room_list = self._get_unique_rooms()
@@ -224,6 +210,7 @@ class Server(object):
 
     def _check_if_add_watcher(self, old_room_list):
         new_room_list = self._get_unique_rooms()
+        print(old_room_list, new_room_list)
         for room in new_room_list:
             if room not in old_room_list:
                 self._make_fifos(room)
@@ -247,14 +234,17 @@ class Server(object):
 
     def _make_fifos(self, room):
         names, channel = room
+        print("trying to make fifos for %s, %s" % (names, channel))
+        sp.call(['mkdir', '-p', "/".join([FIFO_DIR, names])])
         in_fifo_filename = "/".join([FIFO_DIR, names, channel + ".in.fifo"])
         out_fifo_filename = "/".join([FIFO_DIR, names, channel + ".out.fifo"])
-        os.call(['mkfifo', in_fifo_filename])
-        os.call(['mkfifo', out_fifo_filename])
+        sp.call(['mkfifo', in_fifo_filename])
+        sp.call(['mkfifo', out_fifo_filename])
 
         t = thrd.Thread(
                 target=write_client_data_to_kbfs,
-                args=(in_fifo_filename, self._fifopath_to_keybasepath))
+                args=(in_fifo_filename,
+                    self._fifopath_to_keybasepath(in_fifo_filename)))
         t.daemon = True
         self._out_fifo_dict[out_fifo_filename] = t
         t.start()
