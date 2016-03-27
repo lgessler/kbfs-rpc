@@ -98,7 +98,7 @@ class Server(object):
         """ Given the path under FIFO_DIR for a file used for client --> server
         communication, construct the corresponding path under /keybase for
         server --> KBFS communication """
-        index1 = len("/tmp/" + APP_DIR)
+        index1 = len(SUBS_DIR)
         index2 = len(fifo_path[:fifo_path.rindex('/')])
         filename = fifo_path[fifo_path.rindex('/') + 1 : fifo_path.rindex('.fifo')]
         return "/keybase" + \
