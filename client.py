@@ -122,6 +122,14 @@ class Client(object):
             print("keybase status failed. Do you have keybase installed?")
             exit(-1)
 
+if __name__ == '__main__':
+    try:
+        os.listdir('/keybase')
+    except:
+        print("Failed to open /keybase -- do you have KBFS installed?")
+        exit(-1)
 
-
-
+    c = Client()
+    c.sub("lgessler,tondwalkar","chat")
+    
+    print("""c.send_message(os.getlogin() + " has joined room!","lgessler,tondwalkar","chat")""")
