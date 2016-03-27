@@ -1,3 +1,5 @@
+**DISCLAIMER:** This is a proof of concept and it's almost entirely broken. DO NOT use this for anything more than amusement.
+
 #Keybase RPC
 
 ## Inspiration
@@ -33,3 +35,7 @@ We abstracted away a *lot* of details for application developers: all an impleme
 ## What's next for Keybase RPC (kbrpc)
 
 Refactoring
+
+# License
+
+MIT
