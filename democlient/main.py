@@ -2,7 +2,6 @@ from client import Client
 import base64 as b64
 import datetime
 
-c = Client()
 
 class MyClient(Client):
     def __init__(self):
@@ -23,15 +22,15 @@ if __name__ == '__main__':
     channel = "chat"
     c.sub(names, channel)
 
-    #try:
-    while True:
-        line = input()
-        if line.strip() == 'exit':
-            exit(0)
-        else:
-            c.send_message(line, names, channel)
-    #except KeyboardInterrupt:
-    #    c.__del__()
-    #    exit(0)
+    try:
+        while True:
+            line = input("\r")
+            if line.strip() == 'exit':
+                exit(0)
+            else:
+                c.send_message(line, names, channel)
+    except KeyboardInterrupt:
+        c.__del__()
+        exit(0)
 
 
