@@ -166,7 +166,7 @@ class Server(object):
                fifo_path[index1:index2] + \
                "/" + HIDDEN_APP_DIR + "/" + \
                filename + \
-               "." + self._user_id + "." + self._device_name + ".sent"
+               "." + self._username + "." + self._device_name + ".sent"
 
     def update_subs(self, subspath, deleted=False):
         cid = self._path2uuid(subspath)
