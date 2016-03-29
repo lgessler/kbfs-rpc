@@ -162,6 +162,7 @@ class Server(object):
         index1 = len(SUBS_DIR)
         index2 = len(fifo_path[:fifo_path.rindex('/')])
         filename = fifo_path[fifo_path.rindex('/') + 1 : fifo_path.rindex('.fifo')]
+        filename = filename[:filename.rindex('.')]
         return "/keybase" + \
                fifo_path[index1:index2] + \
                "/" + HIDDEN_APP_DIR + "/" + \
