@@ -30,12 +30,6 @@ KBFS is streamed on demand, not automatically mirrored like Dropbox, so we had t
 
 We abstracted away a *lot* of details for application developers: all an implementing developer has to do in Python is to inherit from a Client class and (1) override its `on_message` function and (2) use its `send_message` function. Application developers don't need to know *anything* about cryptography to have reasonable assurance (assuming they trust the people at Keybase and us, the authors of Keybase RPC, or trust that they have read our code well).
 
-## What we learned
-
-## What's next for Keybase RPC (kbrpc)
-
-Refactoring
-
 # License
 
 MIT
