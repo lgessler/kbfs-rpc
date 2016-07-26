@@ -4,8 +4,6 @@
 
 ## Inspiration
 
-WhatsApp and Telegram drew attention in the news about a month ago. They claim to offer end-to-end encrypted chat, but with no easy way of inspecting their source, users were left with no real choice but to blindly trust them.
-
 Keybase RPC empowers application developers by giving them easy access to (1) authentication of users and (2) encrypted transmission of arbitrary messages. 
 
 We were able to implement a simple chat client just like Telegram's in just 20 lines of code using Keybase RPC, and its architecture is general enough to allow many different kinds of apps as well.
