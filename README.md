@@ -1,3 +1,5 @@
+**Edit (2/21/2017)**: Keybase itself now has a solution that does what this project aimed to achieve. Check it out! https://keybase.io/blog/keybase-chat
+
 **NOTE:** This is a proof of concept and it's almost entirely broken. 
 
 # Keybase RPC
